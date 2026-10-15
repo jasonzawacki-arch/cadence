@@ -44,9 +44,9 @@ function delta(cur: number | null, prev: number | null, lowerIsBetter: boolean, 
 export function mount(demoData: Data) {
   demo = demoData;
   load(demoData, true);
-  document.body.innerHTML = `<a class="skip" href="#app">Skip to content</a>
-  <header class="top"><a class="brand" href="#/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h3V10H3zm5 0h3V6H8zm5 0h3v-5h-3zm5 0h3V3h-3z" fill="currentColor"/></svg>Cadence</a>
-  <nav aria-label="Sections"><a href="#/" data-v="dash">Dashboard</a><a href="#/data" data-v="data">Data</a></nav></header>
+  document.body.innerHTML = `<div class="orbs" aria-hidden="true"><i></i><i></i><i></i></div><a class="skip" href="#app">Skip to content</a>
+  <header class="top"><a class="brand" href="#/"><span class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h2.5v-6H5zm4 0h2.5V8H9zm4 0h2.5v-4H13zm4 0h2.5V5H17z" fill="currentColor"/></svg></span>Cadence</a>
+  <nav class="tabs" aria-label="Sections"><a href="#/" data-v="dash">Dashboard</a><a href="#/data" data-v="data">Data</a></nav></header>
   <main id="app" tabindex="-1"></main>
   <div id="tip" class="tip" role="tooltip" hidden></div>`;
   window.addEventListener('hashchange', render);
@@ -111,11 +111,12 @@ function dashboard(): string {
     return s.prs ? draw() : `<div class="w-only">${wide(true, draw)}</div><div class="n-only">${draw()}</div>`;
   };
   return `
-  <section class="head">
-    <div class="row between wrap">
-      <div>
+  <section class="hero">
+    <div class="hero-top">
+      <div class="id">
+        <p class="kicker">${isDemo ? '<span class="chip">Demo</span>Real public history, ' : ''}${src.kind === 'git' ? 'read from git' : 'read live from GitHub'}</p>
         <h1>${repoLink}</h1>
-        <p class="src">${isDemo ? '<span class="chip">Demo: real public history</span> ' : ''}${src.kind === 'git' ? 'Read from git' : 'Read live from GitHub'}${src.branch ? `, branch <code>${esc(src.branch)}</code>` : ''}. Deploys are ${esc(src.deploys)}. Collected ${esc(longDate(ms(src.collected)))}.</p>
+        <p class="src">${src.branch ? `Branch <code>${esc(src.branch)}</code>. ` : ''}Deploys are ${esc(src.deploys)}. Collected ${esc(longDate(ms(src.collected)))}.</p>
       </div>
       <div class="seg" role="radiogroup" aria-label="Period">${[30, 90, 180, 365]
         .filter((x) => x <= span)
@@ -125,16 +126,16 @@ function dashboard(): string {
     <p class="lede">In the last ${days} days, ${esc(src.name)} shipped <b>${plural(s.deploys, 'release')}</b>, about ${num(s.perWeek)} a week. A change took a median <b>${dur(s.leadMedian)}</b> from merging to release${s.failed ? `, and <b>${plural(s.failed, 'release')}</b> later needed a revert` : ', and no release needed a revert'}.</p>
   </section>
 
-  <section class="tiles" aria-label="DORA metrics">
-    <div class="group"><h2>Throughput</h2>
+  <section class="metrics" aria-label="DORA metrics">
+    <div class="group thr"><h2>Throughput</h2><div class="tiles">
       ${tile('Deployment frequency', `${num(s.perWeek)}<small> a week</small>`, `${plural(s.deploys, 'release')}; median ${s.daysBetween == null ? 'none' : num(s.daysBetween)} days apart`, delta(s.perWeek, prev?.perWeek ?? null, false, (v) => num(v), ' a week'), 'freq')}
       ${tile('Change lead time', dur(s.leadMedian), `median, merge to release; 85% within ${dur(s.leadP85)}`, delta(s.leadMedian, prev?.leadMedian ?? null, true, (v) => dur(v)), 'lead')}
       ${tile('Failed deployment recovery time', dur(s.recoveryMedian), s.failed ? `median, failed release to the release with the revert` : 'no failed releases in this period', delta(s.recoveryMedian, prev?.recoveryMedian ?? null, true, (v) => dur(v)), 'recovery')}
-    </div>
-    <div class="group"><h2>Instability</h2>
+    </div></div>
+    <div class="group ins"><h2>Instability</h2><div class="tiles">
       ${tile('Change fail rate', pct(s.failRate), `${s.failed} of ${plural(s.deploys, 'release')} later needed a revert`, delta(s.failRate, prev?.failRate ?? null, true, (v) => points(v), ''), 'cfr')}
       ${tile('Deployment rework rate', pct(s.reworkRate), `${s.rework} of ${plural(s.deploys, 'release')} shipped a revert of something released`, delta(s.reworkRate, prev?.reworkRate ?? null, true, (v) => points(v), ''), 'rework')}
-    </div>
+    </div></div>
   </section>
   <p class="guide">Compare a service with itself over time. DORA publishes no fixed targets and advises against ranking teams by these numbers.</p>
 
@@ -153,14 +154,14 @@ function dashboard(): string {
   <section class="panel">
     <h2>Releases that needed a revert</h2>
     ${s.failures.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">Release</th><th scope="col">Change that was reverted</th><th scope="col">Fixed in</th><th scope="col">Recovery</th></tr></thead><tbody>${s.failures
-      .map((f) => `<tr><td><b>${esc(f.deploy.name)}</b><div class="hint">${esc(shortDate(ms(f.deploy.at)))}</div></td><td>${f.reverted.pr ? link(f.reverted.pr, f.reverted.subject) : esc(f.reverted.subject)}<div class="hint">reverted by ${f.revert.pr ? link(f.revert.pr, '#' + f.revert.pr) : esc(f.revert.sha.slice(0, 9))}</div></td><td>${f.fixedBy ? esc(f.fixedBy.name) : '<span class="warn">not released yet</span>'}</td><td>${f.hours != null ? dur(f.hours) : ''}</td></tr>`)
+      .map((f) => `<tr><td><b class="rel">${esc(f.deploy.name)}</b><div class="hint m">${esc(shortDate(ms(f.deploy.at)))}</div></td><td>${f.reverted.pr ? link(f.reverted.pr, f.reverted.subject) : esc(f.reverted.subject)}<div class="hint">reverted by ${f.revert.pr ? link(f.revert.pr, '#' + f.revert.pr) : esc(f.revert.sha.slice(0, 9))}</div></td><td class="m">${f.fixedBy ? esc(f.fixedBy.name) : '<span class="warn">not released yet</span>'}</td><td class="m">${f.hours != null ? dur(f.hours) : ''}</td></tr>`)
       .join('')}</tbody></table></div>` : '<p class="hint">None in this period. Failures are found through reverts, so a problem fixed forward without a revert does not show here.</p>'}
   </section>
 
   <section class="panel">
     <h2>Changes that waited longest for a release</h2>
     ${slow.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">Change</th><th scope="col">Merged</th><th scope="col">Released in</th><th scope="col">Waited</th></tr></thead><tbody>${slow
-      .map((x) => `<tr><td>${x.c.pr ? link(x.c.pr, x.c.subject) : esc(x.c.subject)}</td><td>${esc(shortDate(ms(x.c.at)))}</td><td>${esc(x.dep.name)}</td><td>${dur(x.hours)}</td></tr>`)
+      .map((x) => `<tr><td>${x.c.pr ? link(x.c.pr, x.c.subject) : esc(x.c.subject)}</td><td class="m">${esc(shortDate(ms(x.c.at)))}</td><td class="m">${esc(x.dep.name)}</td><td class="m">${dur(x.hours)}</td></tr>`)
       .join('')}</tbody></table></div>` : '<p class="hint">No released changes in this period.</p>'}
   </section>
 
@@ -177,7 +178,7 @@ function dashboard(): string {
 }
 
 function tile(label: string, value: string, sub: string, d: string, key: string) {
-  return `<div class="tile" data-metric="${key}"><h3>${esc(label)}</h3><p class="val">${value}</p><p class="sub">${esc(sub)}</p><p>${d}</p></div>`;
+  return `<div class="tile" data-metric="${key}"><h3>${esc(label)}</h3><p class="val">${value}</p><p class="sub">${esc(sub)}</p>${d}</div>`;
 }
 function card(cls: string, title: string, sub: string, svg: string, tbl: string, extra = '') {
   return `<figure class="card ${cls}"><figcaption><h2>${esc(title)}</h2><p>${esc(sub)}</p></figcaption>${svg}${extra}<details class="tbl"><summary>Show as a table</summary>${tbl}</details></figure>`;

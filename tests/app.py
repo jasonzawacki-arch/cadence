@@ -118,7 +118,7 @@ with sync_playwright() as pw:
 
     # ---- the demo: real history, checked against an independent reading ----
     ctx, p = open_page(b, viewport={'width': 1360, 'height': 900})
-    check('opens on the demo with the repository name and a demo chip', demo['source']['name'] in p.inner_text('h1') and 'Demo' in p.inner_text('.src'))
+    check('opens on the demo with the repository name and a demo chip', demo['source']['name'] in p.inner_text('h1') and 'demo' in p.inner_text('.kicker').lower())
     check('no outside requests needed to open (works without login)', not errs, errs)
     e90 = compare(p, demo, 90, '90 days')
     lede = p.inner_text('.lede')
@@ -175,7 +175,7 @@ with sync_playwright() as pw:
     p.set_input_files('input[data-act=open]', str(Collector.out))
     p.wait_for_function("location.hash === '#/'")
     p.wait_for_timeout(150)
-    check('opening a collector file shows that repository', 'acme/svc' in p.inner_text('h1') and 'Read from git' in p.inner_text('.src'))
+    check('opening a collector file shows that repository', 'acme/svc' in p.inner_text('h1') and 'read from git' in p.inner_text('.kicker').lower())
     check('a short history picks the longest period that fits', p.evaluate("document.querySelector('.seg input:checked').value") == '30')
     ec = compare(p, coll, 30, 'collector file')
     check('collector file: one failed release out of three, recovered by the next', (ec['deploys'], ec['failed']) == (3, 1) and tile(p, 'cfr') == '33%', (ec, tile(p, 'cfr')))
@@ -219,7 +219,7 @@ with sync_playwright() as pw:
     mock_github(ctx, 'ok', seen)
     TOKEN = 'ghp_TESTTOKEN0000000000000000000000000000'
     read_live(p, 'https://github.com/acme/shop', TOKEN)
-    check('live mode reads a repository and opens its dashboard', 'acme/shop' in p.inner_text('h1') and 'Read live from GitHub' in p.inner_text('.src'), p.inner_text('h1'))
+    check('live mode reads a repository and opens its dashboard', 'acme/shop' in p.inner_text('h1') and 'read live from github' in p.inner_text('.kicker').lower(), p.inner_text('h1'))
     check('live mode: pre-releases are not counted as deploys', '3 releases' in p.inner_text('.lede'), p.inner_text('.lede'))
     check('live mode: the reverted release counts as a failure', tile(p, 'cfr') == '33%' and tile(p, 'rework') == '33%' and tile(p, 'recovery') == '2.0 days', (tile(p, 'cfr'), tile(p, 'rework'), tile(p, 'recovery')))
     check('live mode: pull request cycle time shown', p.locator('figure.card h2', has_text='Pull request cycle time').count() == 1)
