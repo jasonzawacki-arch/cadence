@@ -32,6 +32,7 @@ export interface Source {
   collected: string;
   deploys: string; // how deploys were identified, in words
   url?: string;
+  unit?: 'release' | 'deployment'; // what a deploy is called on screen (default: release)
 }
 
 export interface Data {

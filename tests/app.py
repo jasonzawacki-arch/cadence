@@ -85,8 +85,15 @@ def mock_github(ctx, mode, seen):
             return js({'message': 'API rate limit exceeded'}, 403)
         if re.match(r'^/repos/acme/shop$', path):
             return js({'default_branch': 'main'})
+        if path.startswith('/repos/acme/shop/deployments'):
+            if mode != 'deploys' or 'page=1' not in path:
+                return js([])
+            deps = [{'sha': c[0], 'environment': 'github-pages', 'created_at': iso(at + timedelta(minutes=3))} for c, at in ((commits[1], commits[1][1]), (commits[3], commits[3][1]), (commits[4], commits[4][1]))]
+            deps.append({'sha': commits[3][0], 'environment': 'github-pages', 'created_at': iso(commits[3][1] + timedelta(hours=2))})  # a rerun of the same commit
+            deps.append({'sha': commits[2][0], 'environment': 'preview', 'created_at': iso(commits[2][1])})  # not production
+            return js(deps)
         if path.startswith('/repos/acme/shop/releases'):
-            if mode == 'norelease' or 'page=1' not in path:
+            if mode in ('norelease', 'deploys') or 'page=1' not in path:
                 return js([])
             rel = [{'tag_name': n, 'published_at': iso(at), 'draft': False, 'prerelease': False} for n, at in [('v3', r3), ('v2', r2), ('v1', r1)]]
             rel.append({'tag_name': 'v4-rc1', 'published_at': iso(NOW - timedelta(days=1)), 'draft': False, 'prerelease': True})
@@ -202,7 +209,7 @@ with sync_playwright() as pw:
     for mode, repo, want in [
         ('missing', 'acme/nope', 'no repository by that name'),
         ('ratelimit', 'acme/shop', 'hourly limit'),
-        ('norelease', 'acme/shop', 'has no published releases'),
+        ('norelease', 'acme/shop', 'has no published releases or deployments'),
         ('', 'not a repo', 'owner/name'),
     ]:
         ctx, p = open_page(b, viewport={'width': 1200, 'height': 900})
@@ -238,6 +245,22 @@ with sync_playwright() as pw:
     p.reload()
     p.wait_for_selector('h1')
     check('a reload forgets the token and returns to the demo', demo['source']['name'] in p.inner_text('h1'))
+    ctx.close()
+
+    # ---- links people paste, and a repository that deploys without releases ----
+    for pasted in ['https://github.com/acme/shop/', 'github.com/acme/shop', 'https://acme.github.io/shop/', 'https://github.com/acme/shop/tree/main']:
+        ctx, p = open_page(b, viewport={'width': 1200, 'height': 900})
+        mock_github(ctx, 'ok', [])
+        read_live(p, pasted)
+        check(f'accepts a pasted link: {pasted}', 'acme/shop' in p.inner_text('h1'), p.inner_text('#gh-status') if p.locator('#gh-status').count() else p.inner_text('h1'))
+        ctx.close()
+    ctx, p = open_page(b, viewport={'width': 1200, 'height': 900})
+    mock_github(ctx, 'deploys', [])
+    read_live(p, 'acme/shop')
+    lede = p.inner_text('.lede')
+    check('no releases: counts GitHub deployments instead, one per commit, production only', '3 deployments' in lede, lede)
+    check('deployments: the words on screen say deployments', 'Deployments per week' in p.inner_text('.charts') and 'deployments to github-pages' in p.inner_text('.src'), p.inner_text('.src'))
+    check('deployments: the reverted deployment counts as a failure', tile(p, 'cfr') == '33%', tile(p, 'cfr'))
     ctx.close()
 
     # ---- phone width ----

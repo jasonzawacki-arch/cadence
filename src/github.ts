@@ -32,6 +32,18 @@ async function get(path: string, token: string, rate: { left: number | null }): 
 
 const subjectKey = (s: string) => s.trim().replace(/\s*\(#\d+\)\s*$/, '').toLowerCase();
 
+/** owner/name from what people paste: owner/name, a github.com link (with or without https://, www, a trailing
+ *  slash, .git, or a deeper path such as /tree/main), or a GitHub Pages address (owner.github.io/name). */
+export function parseRepo(input: string): { owner: string; name: string } {
+  const s = input.trim().replace(/^git@github\.com:/i, '').replace(/^(https?:\/\/)?(www\.)?/i, '');
+  const part = '[A-Za-z0-9_.-]+';
+  const gh = new RegExp(`^(?:github\\.com\\/)?(${part})\\/(${part})`, 'i').exec(s);
+  const pages = new RegExp(`^(${part})\\.github\\.io\\/(${part})`, 'i').exec(s);
+  const m = pages || gh;
+  if (!m || /\.github\.io$|^github\.com$/i.test(m[1])) throw new GitHubError('Enter the repository as owner/name, for example astral-sh/ruff, or paste its GitHub link.');
+  return { owner: m[1], name: m[2].replace(/\.git$/i, '') };
+}
+
 export interface LiveOptions {
   repo: string; // owner/name
   days: number;
@@ -41,9 +53,7 @@ export interface LiveOptions {
 }
 
 export async function fetchRepo(o: LiveOptions): Promise<{ data: Data; capped: boolean; rateLeft: number | null }> {
-  const m = /^\s*([\w.-]+)\/([\w.-]+?)(?:\.git)?\s*$/.exec(o.repo.replace(/^https?:\/\/github\.com\//, ''));
-  if (!m) throw new GitHubError('Enter the repository as owner/name, for example astral-sh/ruff.');
-  const [owner, name] = [m[1], m[2]];
+  const { owner, name } = parseRepo(o.repo);
   const base = `/repos/${owner}/${name}`;
   const rate = { left: null as number | null };
   const say = o.progress || (() => {});
@@ -63,8 +73,31 @@ export async function fetchRepo(o: LiveOptions): Promise<{ data: Data; capped: b
     for (const r of rel) if (!r.draft && !r.prerelease && r.published_at) deploys.push({ name: r.tag_name, at: r.published_at });
     if (rel.length < PAGE || rel.some((r) => r.published_at && r.published_at < since)) break;
   }
+  // No releases: fall back to GitHub deployments (GitHub Pages, Actions environments, other deploy tools), which many
+  // repositories record on every push. Production-like environments are preferred; a redeploy of the same commit counts once.
+  let unit: 'release' | 'deployment' = 'release';
+  let envName = '';
+  if (!deploys.length) {
+    say('No releases; reading deployments');
+    const all: any[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const ds: any[] = await get(`${base}/deployments?per_page=${PAGE}&page=${page}`, o.token, rate);
+      all.push(...ds);
+      if (ds.length < PAGE || ds.some((d) => d.created_at < since)) break;
+    }
+    const envs = [...new Set(all.map((d) => String(d.environment || '')))];
+    envName = envs.find((e) => /^(production|prod|github-pages|live)$/i.test(e)) || envs.find((e) => /prod/i.test(e)) || (envs.length === 1 ? envs[0] : '');
+    const seen = new Set<string>();
+    for (const d of all.sort((a, b) => (a.created_at < b.created_at ? -1 : 1))) {
+      if (envName && d.environment !== envName) continue;
+      if (!d.sha || seen.has(d.sha)) continue;
+      seen.add(d.sha);
+      deploys.push({ name: String(d.sha).slice(0, 7), at: String(d.created_at).replace(/\.\d+Z$/, 'Z') });
+    }
+    unit = 'deployment';
+  }
   deploys.sort((a, b) => (a.at < b.at ? -1 : 1));
-  if (!deploys.length) throw new GitHubError(`${owner}/${name} has no published releases on GitHub. Cadence counts releases as deploys here; for a repository that deploys from tags or a pipeline, use the collector script.`);
+  if (!deploys.length) throw new GitHubError(`${owner}/${name} has no published releases or deployments on GitHub, so there is nothing to count as a deploy. For a repository that deploys from tags or a pipeline, use the collector script.`);
 
   const changes: Change[] = [];
   for (let page = 1; ; page++) {
@@ -122,7 +155,11 @@ export async function fetchRepo(o: LiveOptions): Promise<{ data: Data; capped: b
       name: `${owner}/${name}`,
       branch,
       collected: new Date(now).toISOString().replace(/\.\d+Z$/, 'Z'),
-      deploys: 'GitHub releases (pre-releases left out); each change counted in the first release after it landed',
+      deploys:
+        unit === 'release'
+          ? 'GitHub releases (pre-releases left out); each change counted in the first release after it landed'
+          : `GitHub deployments${envName ? ` to ${envName}` : ''}, named by commit; each change counted in the first deployment after it landed`,
+      unit,
       url: `https://github.com/${owner}/${name}`,
     },
     since: day(now - o.days * 864e5),

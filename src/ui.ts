@@ -13,6 +13,10 @@ let demo: Data;
 let days = 90;
 let isDemo = true;
 let busy = '';
+// What a deploy is called on screen: releases (tags, GitHub releases) or deployments (GitHub deployments).
+const unitWords = (u?: string) =>
+  u === 'deployment' ? { one: 'deployment', many: 'deployments', One: 'Deployment', Many: 'Deployments' } : { one: 'release', many: 'releases', One: 'Release', Many: 'Releases' };
+let U = unitWords();
 const app = () => document.getElementById('app')!;
 
 // ---------- formatting ----------
@@ -77,6 +81,7 @@ export function mount(demoData: Data) {
 function load(d: Data, fromDemo: boolean) {
   data = d;
   ix = index(d);
+  U = unitWords(d.source.unit);
   isDemo = fromDemo;
   const span = spanDays(d);
   if (days > span) days = [30, 90, 180, 365].filter((x) => x <= span).pop() || 30;
@@ -123,28 +128,28 @@ function dashboard(): string {
         .map((x) => `<label><input type="radio" name="days" value="${x}" data-act="days"${x === days ? ' checked' : ''}><span>${x === 365 ? '12 months' : `${x} days`}</span></label>`)
         .join('')}</div>
     </div>
-    <p class="lede">In the last ${days} days, ${esc(src.name)} shipped <b>${plural(s.deploys, 'release')}</b>, about ${num(s.perWeek)} a week. A change took a median <b>${dur(s.leadMedian)}</b> from merging to release${s.failed ? `, and <b>${plural(s.failed, 'release')}</b> later needed a revert` : ', and no release needed a revert'}.</p>
+    <p class="lede">In the last ${days} days, ${esc(src.name)} shipped <b>${plural(s.deploys, U.one, U.many)}</b>, about ${num(s.perWeek)} a week. A change took a median <b>${dur(s.leadMedian)}</b> from merging to ${U.one}${s.failed ? `, and <b>${plural(s.failed, U.one, U.many)}</b> later needed a revert` : `, and no ${U.one} needed a revert`}.</p>
   </section>
 
   <section class="metrics" aria-label="DORA metrics">
     <div class="group thr"><h2>Throughput</h2><div class="tiles">
-      ${tile('Deployment frequency', `${num(s.perWeek)}<small> a week</small>`, `${plural(s.deploys, 'release')}; median ${s.daysBetween == null ? 'none' : num(s.daysBetween)} days apart`, delta(s.perWeek, prev?.perWeek ?? null, false, (v) => num(v), ' a week'), 'freq')}
-      ${tile('Change lead time', dur(s.leadMedian), `median, merge to release; 85% within ${dur(s.leadP85)}`, delta(s.leadMedian, prev?.leadMedian ?? null, true, (v) => dur(v)), 'lead')}
-      ${tile('Failed deployment recovery time', dur(s.recoveryMedian), s.failed ? `median, failed release to the release with the revert` : 'no failed releases in this period', delta(s.recoveryMedian, prev?.recoveryMedian ?? null, true, (v) => dur(v)), 'recovery')}
+      ${tile('Deployment frequency', `${num(s.perWeek)}<small> a week</small>`, `${plural(s.deploys, U.one, U.many)}; median ${s.daysBetween == null ? 'none' : num(s.daysBetween)} days apart`, delta(s.perWeek, prev?.perWeek ?? null, false, (v) => num(v), ' a week'), 'freq')}
+      ${tile('Change lead time', dur(s.leadMedian), `median, merge to ${U.one}; 85% within ${dur(s.leadP85)}`, delta(s.leadMedian, prev?.leadMedian ?? null, true, (v) => dur(v)), 'lead')}
+      ${tile('Failed deployment recovery time', dur(s.recoveryMedian), s.failed ? `median, failed ${U.one} to the ${U.one} with the revert` : `no failed ${U.many} in this period`, delta(s.recoveryMedian, prev?.recoveryMedian ?? null, true, (v) => dur(v)), 'recovery')}
     </div></div>
     <div class="group ins"><h2>Instability</h2><div class="tiles">
-      ${tile('Change fail rate', pct(s.failRate), `${s.failed} of ${plural(s.deploys, 'release')} later needed a revert`, delta(s.failRate, prev?.failRate ?? null, true, (v) => points(v), ''), 'cfr')}
-      ${tile('Deployment rework rate', pct(s.reworkRate), `${s.rework} of ${plural(s.deploys, 'release')} shipped a revert of something released`, delta(s.reworkRate, prev?.reworkRate ?? null, true, (v) => points(v), ''), 'rework')}
+      ${tile('Change fail rate', pct(s.failRate), `${s.failed} of ${plural(s.deploys, U.one, U.many)} later needed a revert`, delta(s.failRate, prev?.failRate ?? null, true, (v) => points(v), ''), 'cfr')}
+      ${tile('Deployment rework rate', pct(s.reworkRate), `${s.rework} of ${plural(s.deploys, U.one, U.many)} shipped a revert of something already shipped`, delta(s.reworkRate, prev?.reworkRate ?? null, true, (v) => points(v), ''), 'rework')}
     </div></div>
   </section>
   <p class="guide">Compare a service with itself over time. DORA publishes no fixed targets and advises against ranking teams by these numbers.</p>
 
   <section class="charts">
-    ${card('', 'Releases per week', 'Each column is one week.', columns(`Releases per week, last ${days} days`, weeks.map((w) => ({ t: w.week, v: w.deploys, tip: `Week of ${shortDate(w.week)}: ${plural(w.deploys, 'release')}` })), from, end, (v) => String(Math.round(v))),
-      table(['Week of', 'Releases', 'Changes merged'], weeks.map((w) => [shortDate(w.week), w.deploys, w.changes])))}
-    ${card('', 'Lead time by release', 'Dot: median wait from merge to release for the changes in that release. Line: 85% of them shipped within this.', dots(`Lead time by release, last ${days} days`, leads.map((l) => ({ t: ms(l.deploy.at), mid: l.median / 24, hi: l.p85 / 24, flag: l.failed, tip: `${l.deploy.name}, ${shortDate(ms(l.deploy.at))}: ${plural(l.n, 'change')}, median ${dur(l.median)}, 85% within ${dur(l.p85)}${l.failed ? '. Later needed a revert.' : ''}` })), from, end, (v) => `${num(v)}d`),
-      table(['Release', 'Date', 'Changes', 'Median wait', '85% within', 'Later reverted'], leads.map((l) => [l.deploy.name, shortDate(ms(l.deploy.at)), l.n, dur(l.median), dur(l.p85), l.failed ? 'yes' : 'no'])),
-      leads.some((l) => l.failed) ? '<p class="key"><i class="k dot"></i>Release <i class="k dot flag"></i>Release that later needed a revert</p>' : '')}
+    ${card('', `${U.Many} per week`, 'Each column is one week.', columns(`${U.Many} per week, last ${days} days`, weeks.map((w) => ({ t: w.week, v: w.deploys, tip: `Week of ${shortDate(w.week)}: ${plural(w.deploys, U.one, U.many)}` })), from, end, (v) => String(Math.round(v))),
+      table(['Week of', `${U.Many}`, 'Changes merged'], weeks.map((w) => [shortDate(w.week), w.deploys, w.changes])))}
+    ${card('', `Lead time by ${U.one}`, `Dot: median wait from merge to ${U.one} for the changes in that ${U.one}. Line: 85% of them shipped within this.`, dots(`Lead time by ${U.one}, last ${days} days`, leads.map((l) => ({ t: ms(l.deploy.at), mid: l.median / 24, hi: l.p85 / 24, flag: l.failed, tip: `${l.deploy.name}, ${shortDate(ms(l.deploy.at))}: ${plural(l.n, 'change')}, median ${dur(l.median)}, 85% within ${dur(l.p85)}${l.failed ? '. Later needed a revert.' : ''}` })), from, end, (v) => `${num(v)}d`),
+      table([`${U.One}`, 'Date', 'Changes', 'Median wait', '85% within', 'Later reverted'], leads.map((l) => [l.deploy.name, shortDate(ms(l.deploy.at)), l.n, dur(l.median), dur(l.p85), l.failed ? 'yes' : 'no'])),
+      leads.some((l) => l.failed) ? `<p class="key"><i class="k dot"></i>${U.One} <i class="k dot flag"></i>${U.One} that later needed a revert</p>` : '')}
     ${s.sizeMedian != null ? card(s.prs ? '' : 'span', 'Change size', `Median lines changed per merged change, by week. ${pct(s.largeShare)} of changes in this period touched more than ${LARGE} lines.`, sizeChart(),
       table(['Week of', 'Changes', 'Median lines'], weeks.map((w) => [shortDate(w.week), w.changes, w.sizeMedian == null ? '' : Math.round(w.sizeMedian)]))) : ''}
     ${s.prs ? card('', 'Pull request cycle time', `Median hours from opening a pull request to merging it, by week. ${plural(s.prs, 'pull request')} merged in this period, median ${dur(s.prCycleMedian)}.`, line(`Pull request cycle time by week, last ${days} days`, weeks.map((w) => ({ t: w.week, v: w.prCycleMedian, tip: `Week of ${shortDate(w.week)}: median ${dur(w.prCycleMedian)}` })), from, end, (v) => `${Math.round(v)}h`),
@@ -152,26 +157,26 @@ function dashboard(): string {
   </section>
 
   <section class="panel">
-    <h2>Releases that needed a revert</h2>
-    ${s.failures.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">Release</th><th scope="col">Change that was reverted</th><th scope="col">Fixed in</th><th scope="col">Recovery</th></tr></thead><tbody>${s.failures
-      .map((f) => `<tr><td><b class="rel">${esc(f.deploy.name)}</b><div class="hint m">${esc(shortDate(ms(f.deploy.at)))}</div></td><td>${f.reverted.pr ? link(f.reverted.pr, f.reverted.subject) : esc(f.reverted.subject)}<div class="hint">reverted by ${f.revert.pr ? link(f.revert.pr, '#' + f.revert.pr) : esc(f.revert.sha.slice(0, 9))}</div></td><td class="m">${f.fixedBy ? esc(f.fixedBy.name) : '<span class="warn">not released yet</span>'}</td><td class="m">${f.hours != null ? dur(f.hours) : ''}</td></tr>`)
+    <h2>${U.Many} that needed a revert</h2>
+    ${s.failures.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">${U.One}</th><th scope="col">Change that was reverted</th><th scope="col">Fixed in</th><th scope="col">Recovery</th></tr></thead><tbody>${s.failures
+      .map((f) => `<tr><td><b class="rel">${esc(f.deploy.name)}</b><div class="hint m">${esc(shortDate(ms(f.deploy.at)))}</div></td><td>${f.reverted.pr ? link(f.reverted.pr, f.reverted.subject) : esc(f.reverted.subject)}<div class="hint">reverted by ${f.revert.pr ? link(f.revert.pr, '#' + f.revert.pr) : esc(f.revert.sha.slice(0, 9))}</div></td><td class="m">${f.fixedBy ? esc(f.fixedBy.name) : `<span class="warn">not shipped yet</span>`}</td><td class="m">${f.hours != null ? dur(f.hours) : ''}</td></tr>`)
       .join('')}</tbody></table></div>` : '<p class="hint">None in this period. Failures are found through reverts, so a problem fixed forward without a revert does not show here.</p>'}
   </section>
 
   <section class="panel">
-    <h2>Changes that waited longest for a release</h2>
-    ${slow.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">Change</th><th scope="col">Merged</th><th scope="col">Released in</th><th scope="col">Waited</th></tr></thead><tbody>${slow
+    <h2>Changes that waited longest for a ${U.one}</h2>
+    ${slow.length ? `<div class="tw"><table class="list"><thead><tr><th scope="col">Change</th><th scope="col">Merged</th><th scope="col">Shipped in</th><th scope="col">Waited</th></tr></thead><tbody>${slow
       .map((x) => `<tr><td>${x.c.pr ? link(x.c.pr, x.c.subject) : esc(x.c.subject)}</td><td class="m">${esc(shortDate(ms(x.c.at)))}</td><td class="m">${esc(x.dep.name)}</td><td class="m">${dur(x.hours)}</td></tr>`)
-      .join('')}</tbody></table></div>` : '<p class="hint">No released changes in this period.</p>'}
+      .join('')}</tbody></table></div>` : `<p class="hint">No shipped changes in this period.</p>`}
   </section>
 
   <details class="panel how"><summary>How Cadence reads these numbers</summary>
     <ul>
       <li><b>Deployment frequency:</b> ${esc(data.source.deploys)}, per week.</li>
-      <li><b>Change lead time:</b> from a change merging to <code>${esc(data.source.branch || 'main')}</code> to the release that shipped it. DORA measures from commit; for squash-merged pull requests the merge is the commit on the main branch.</li>
-      <li><b>Change fail rate:</b> releases that shipped a change undone by a revert within ${FAIL_WINDOW_DAYS} days, shipped in a later release. A revert before the change was released doesn't count, because nothing reached users. Neither does one months later, which is a change of direction rather than a failure that needed immediate attention.</li>
-      <li><b>Failed deployment recovery time:</b> from the failed release to the first release that shipped its revert.</li>
-      <li><b>Deployment rework rate:</b> releases that shipped a revert of something already released, an unplanned release caused by a problem in production.</li>
+      <li><b>Change lead time:</b> from a change merging to <code>${esc(data.source.branch || 'main')}</code> to the ${U.one} that shipped it. DORA measures from commit; for squash-merged pull requests the merge is the commit on the main branch.</li>
+      <li><b>Change fail rate:</b> ${U.many} that shipped a change undone by a revert within ${FAIL_WINDOW_DAYS} days, shipped in a later ${U.one}. A revert before the change was shipped doesn't count, because nothing reached users. Neither does one months later, which is a change of direction rather than a failure that needed immediate attention.</li>
+      <li><b>Failed deployment recovery time:</b> from the failed ${U.one} to the first ${U.one} that shipped its revert.</li>
+      <li><b>Deployment rework rate:</b> ${U.many} that shipped a revert of something already shipped, an unplanned ${U.one} caused by a problem in production.</li>
       <li>Failures are inferred from reverts. A problem fixed forward with a new change, or rolled back outside git, is not seen; pair these numbers with your incident records.</li>
     </ul>
   </details>`;
@@ -193,8 +198,8 @@ function dataView(): string {
     <div class="cols">
       <form class="panel" data-form="github">
         <h2>Read a GitHub repository</h2>
-        <p>Public repositories work without signing in. Cadence counts the repository's GitHub releases as deploys.</p>
-        <label>Repository<input name="repo" placeholder="owner/name, e.g. astral-sh/ruff" required autocomplete="off"></label>
+        <p>Public repositories work without signing in. Cadence counts the repository's GitHub releases as deploys, or its GitHub deployments (such as GitHub Pages) when it has no releases.</p>
+        <label>Repository<input name="repo" placeholder="owner/name or a GitHub link, e.g. astral-sh/ruff" required autocomplete="off"></label>
         <div class="grid2">
           <label>Period<select name="days"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">180 days</option></select></label>
           <label>Token <span class="hint">optional</span><input name="token" type="password" autocomplete="off" placeholder="for private repos or large histories"></label>
@@ -217,7 +222,7 @@ function dataView(): string {
     </div>
     <section class="panel quiet">
       <h2>Now showing</h2>
-      <p>${esc(data.source.name)}: ${plural(data.deploys.length, 'release')} and ${plural(data.changes.length, 'change')} from ${esc(longDate(Date.parse(data.since + 'T00:00:00Z')))} to ${esc(longDate(Date.parse(data.until + 'T00:00:00Z')))}${isDemo ? ', the demo' : ''}.</p>
+      <p>${esc(data.source.name)}: ${plural(data.deploys.length, U.one, U.many)} and ${plural(data.changes.length, 'change')} from ${esc(longDate(Date.parse(data.since + 'T00:00:00Z')))} to ${esc(longDate(Date.parse(data.until + 'T00:00:00Z')))}${isDemo ? ', the demo' : ''}.</p>
       <div class="row wrap"><a class="btn small" href="#/">Open the dashboard</a>${isDemo ? '' : '<button class="btn small ghost" data-act="demo">Back to the demo</button>'}<button class="btn small ghost" data-act="save">Download this data</button></div>
       <p class="hint">Data stays in this page. Reloading returns to the demo.</p>
     </section>

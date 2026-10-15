@@ -40,7 +40,7 @@ Reverts are found from `This reverts commit <sha>` in the message (what `git rev
 
 ## Two ways to load a repository
 
-**Live from GitHub.** On the Data page, enter `owner/name`. Cadence reads the repository's published releases (pre-releases and drafts left out), the commits on the default branch, and merged pull requests, and counts each change in the first release published after it landed. Public repositories need no token. A token raises GitHub's limit from 60 to 5,000 requests an hour and opens private repositories. It is held in the page's memory only, sent only to `api.github.com`, and gone on reload.
+**Live from GitHub.** On the Data page, enter `owner/name` or paste the repository's link. Cadence reads the repository's published releases (pre-releases and drafts left out), the commits on the default branch, and merged pull requests, and counts each change in the first release published after it landed. A repository with no releases is read from its GitHub deployments instead (GitHub Pages, Actions environments and other deploy tools record these), preferring a production environment and counting a redeploy of the same commit once. Public repositories need no token. A token raises GitHub's limit from 60 to 5,000 requests an hour and opens private repositories. It is held in the page's memory only, sent only to `api.github.com`, and gone on reload.
 
 **The collector script, for any git host.** [`collect/cadence_collect.py`](collect/cadence_collect.py) reads a clone on your own machine, so it works with GitHub, GitLab, Bitbucket or a company server, and nothing leaves the machine:
 
