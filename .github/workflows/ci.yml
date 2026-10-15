@@ -1,0 +1,15 @@
+name: ci
+# Type-checks, builds, and runs the browser tests and the collector tests on every push.
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.13" }
+      - run: npm ci && npm run build
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python tests/run_all.py

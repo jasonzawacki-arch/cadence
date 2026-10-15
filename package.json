@@ -1,0 +1,16 @@
+{
+  "name": "cadence",
+  "version": "0.1.0",
+  "description": "DORA software delivery metrics from a repository's history",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "check": "tsc -p .",
+    "build": "tsc -p . && node build.mjs",
+    "test": "python3 tests/run_all.py"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
